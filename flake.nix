@@ -1,71 +1,37 @@
 {
-  description = "Marker PDF to Markdown converter";
+  description = "Marker - PDF/document to markdown converter";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs";
-    poetry2nix = {
-      url = "github:nix-community/poetry2nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
 
-  outputs = { self, nixpkgs, poetry2nix }: {
-    packages = {
-      x86_64-linux.default = let
-        pkgs = import nixpkgs {
-          system = "x86_64-linux";
-          overlays = [ poetry2nix.overlays.default ];
-        };
-      in pkgs.poetry2nix.mkPoetryApplication {
-        projectDir = ./.;
-      };
+  outputs = { self, nixpkgs }:
+    let
+      supportedSystems = [ "x86_64-linux" "aarch64-darwin" ];
+      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+    in {
+      devShells = forAllSystems (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          python = pkgs.python312;
+        in {
+          default = pkgs.mkShell {
+            buildInputs = [
+              python
+              pkgs.poetry
+              pkgs.libffi
+              pkgs.zlib
+            ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+              pkgs.apple-sdk
+            ];
 
-      aarch64-darwin.default = let
-        pkgs = import nixpkgs {
-          system = "aarch64-darwin";
-          overlays = [ poetry2nix.overlays.default ];
-        };
-      in pkgs.poetry2nix.mkPoetryApplication {
-        projectDir = ./.;
-      };
+            shellHook = ''
+              export PYTHONPATH="$PWD:$PYTHONPATH"
+              # Let poetry manage its own venv inside the project
+              export POETRY_VIRTUALENVS_IN_PROJECT=true
+              echo "Marker dev shell ready. Run 'poetry install' to set up Python deps."
+            '';
+          };
+        });
     };
-
-    devShells = {
-      x86_64-linux.default = let
-        pkgs = import nixpkgs {
-          system = "x86_64-linux";
-          overlays = [ poetry2nix.overlays.default ];
-        };
-      in pkgs.mkShell {
-        buildInputs = with pkgs; [
-          (pkgs.poetry2nix.mkPoetryEnv {
-            projectDir = ./.;
-          })
-          pkgs.libffi
-        ];
-        shellHook = ''
-          export PYTHONPATH="$PWD:$PYTHONPATH"
-        '';
-      };
-
-      aarch64-darwin.default = let
-        pkgs = import nixpkgs {
-          system = "aarch64-darwin";
-          overlays = [ poetry2nix.overlays.default ];
-        };
-      in pkgs.mkShell {
-        buildInputs = with pkgs; [
-          (pkgs.poetry2nix.mkPoetryEnv {
-            projectDir = ./.;
-          })
-          pkgs.darwin.apple_sdk.frameworks.CoreFoundation
-          pkgs.darwin.apple_sdk.frameworks.Accelerate
-          pkgs.libffi
-        ];
-        shellHook = ''
-          export PYTHONPATH="$PWD:$PYTHONPATH"
-        '';
-      };
-    };
-  };
 }
